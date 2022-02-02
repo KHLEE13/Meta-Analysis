@@ -1,0 +1,136 @@
+---
+title: "Meta-Analysis"
+author: "KHLEE"
+date: '2022 2 2 '
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+library(meta)
+library(metafor)
+library(rmeta)
+library(readxl)
+library(dplyr)
+library(knitr)
+library(kableExtra)
+library(DT)
+```
+
+
+```{r data}
+data <- read_excel("메타분석 입력결과.xlsx", 
+                           sheet = "메타분석",
+                           col_names=TRUE,
+                           na="NA")
+
+colnames(data) <- gsub(" ", "", colnames(data))
+data <- data %>%
+  mutate(연구= paste(저자, 연도, sep=(" "))) %>% 
+  rename(Study = 인용,
+         Grade = 대상,
+         Program = 프로그램,
+         Duration = 참여기간,
+         n_c = n_통제군,
+         mean_c = 통제집단_변화량_평균,
+         sd_c = 통제집단_변화량_표준편차,
+         n_e = n_훈련군,
+         mean_e=훈련집단_변화량_평균,
+         sd_e = 훈련집단_변화량_표준편차)
+
+datatable(data[,c("Study", "Grade", "Program", "Duration","측정변인", "측정항목",
+              "n_c", "mean_c", "sd_c",
+              "n_e", "mean_e", "sd_e")], caption="사전-사후 변화량의 평균, 표준편차",
+          rownames = FALSE,
+          extensions="Buttons",
+          options=list(dom="Bfrtip",
+                       buttons=c("excel")))
+
+```
+
+
+```{r analysis}
+result.ungruop.final <- data.frame()
+result.group.final <- data.frame()
+
+for (i in unique(data$측정변인)){
+  cat(i, "- 전체 메타분석")
+  data.loop <- data[data$측정변인==i,]
+  ma_con <- metacont(n.e=n_e, mean.e=mean_e, sd.e=sd_e,
+                     n.c=n_c, mean.c=mean_c, sd.c=sd_c,
+                     sm="SMD", method.smd="Hedges", 
+                     Study, data=data.loop)
+  SMD <- ma_con$TE.random 
+  SE <- ma_con$seTE.random 
+  lower <- ma_con$lower.random
+  upper <- ma_con$upper.random
+  p <- ma_con$pval.random
+  
+  result.ungruop.temp <- data.frame(측정변인=i, SMD=SMD, SE=SE, lower=lower, upper=upper, p=p)
+  result.ungruop.final <- rbind(result.ungruop.final, result.ungruop.temp)
+  
+  forest(ma_con, comb.fixed=FALSE, digits=3,
+         rightcols=c("effect", "ci"))
+  
+  funnel(ma_con, comb.random=TRUE)
+  
+  cat(i, "- 학년 구분")
+  ma_con <- metacont(n.e=n_e, mean.e=mean_e, sd.e=sd_e,
+                     n.c=n_c, mean.c=mean_c, sd.c=sd_c,
+                     sm="SMD", method.smd="Hedges", comb.random=TRUE,
+                     Study, byvar=Grade, data=data.loop)
+  
+  forest(ma_con, comb.fixed=FALSE, digits=3,
+         rightcols=c("effect", "ci"))
+  
+  ma_con <- metacont(n.e=n_e, mean.e=mean_e, sd.e=sd_e,
+                   n.c=n_c, mean.c=mean_c, sd.c=sd_c,
+                   sm="SMD", method.smd="Hedges", tau.common=TRUE,
+                   Study, byvar=Grade, data=data.loop)
+  p <- ma_con$pval.Q.b.random
+  result.group.temp <- data.frame(측정변인=i, 집단구분=paste(unique(data.loop$Grade),collapse=","), p=p)
+  result.group.final <- rbind(result.group.final, result.group.temp)
+
+  cat(i, "- 운동 프로그램 구분")
+  ma_con <- metacont(n.e=n_e, mean.e=mean_e, sd.e=sd_e,
+                     n.c=n_c, mean.c=mean_c, sd.c=sd_c,
+                     sm="SMD", method.smd="Hedges", comb.random=TRUE,
+                     Study, byvar=Program, data=data.loop)
+  
+  forest(ma_con, comb.fixed=FALSE, digits=3,
+         rightcols=c("effect", "ci"))
+  
+  ma_con <- metacont(n.e=n_e, mean.e=mean_e, sd.e=sd_e,
+                   n.c=n_c, mean.c=mean_c, sd.c=sd_c,
+                   sm="SMD", method.smd="Hedges", tau.common=TRUE, comb.random=TRUE,
+                   Study, byvar=Program, data=data.loop)
+  p <- ma_con$pval.Q.b.random
+  result.group.temp <- data.frame(측정변인=i, 집단구분=paste(unique(data.loop$Program),collapse=",") , p=p)
+  result.group.final <- rbind(result.group.final, result.group.temp)
+  
+  cat(i, "- 참여 기간 구분")
+  ma_con <- metacont(n.e=n_e, mean.e=mean_e, sd.e=sd_e,
+                     n.c=n_c, mean.c=mean_c, sd.c=sd_c,
+                     sm="SMD", method.smd="Hedges", comb.random=TRUE,
+                     Study, byvar=Duration, data=data.loop)
+  
+  forest(ma_con, comb.fixed=FALSE, digits=3,
+         rightcols=c("effect", "ci"))
+  
+  ma_con <- metacont(n.e=n_e, mean.e=mean_e, sd.e=sd_e,
+                   n.c=n_c, mean.c=mean_c, sd.c=sd_c,
+                   sm="SMD", method.smd="Hedges", tau.common=TRUE, comb.random=TRUE,
+                   Study, byvar=Duration, data=data.loop)
+  p <- ma_con$pval.Q.b.random
+  result.group.temp <- data.frame(측정변인=i, 집단구분=paste(unique(data.loop$Duration),collapse=",") , p=p)
+  result.group.final <- rbind(result.group.final, result.group.temp)
+}
+
+row.names(result.ungruop.final) <- NULL
+kable(result.ungruop.final, caption="메타분석 결과", digits=3) %>% 
+  kable_styling()
+
+row.names(result.group.final) <- NULL
+kable(result.group.final, caption="메타 ANOVA 결과", digits=3) %>% 
+  kable_styling()
+```
